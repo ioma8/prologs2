@@ -4,6 +4,19 @@
     project_missing_tools/2,
     project_missing_skills/2,
     next_project/1,
+    top_project/1,
+    quick_win/1,
+    unlocked_by_tool/2,
+    purchase_unlock_count/2,
+    issue_hypothesis/3,
+    symptom_matches/2,
+    next_diagnostic_check/2,
+    skill_gap/2,
+    best_skill_to_learn/1,
+    projects_for_skill_growth/2,
+    victory_chain/2,
+    minimal_buy_list/1,
+    learning_path/2,
     ideas_by_tag/2,
     knowledge_for_skill/2,
     repair_candidate/1,
@@ -111,6 +124,30 @@ owned_tool(clamps).
 owned_skill(woodworking).
 owned_skill(electrical_diagnostics).
 
+estimate_hours(workbench_rebuild, 8).
+estimate_hours(fix_table_lamp_switch, 1).
+estimate_hours(garage_shelf_upgrade, 4).
+
+impact(workbench_rebuild, high).
+impact(fix_table_lamp_switch, high).
+impact(garage_shelf_upgrade, medium).
+
+risk(workbench_rebuild, medium).
+risk(fix_table_lamp_switch, low).
+risk(garage_shelf_upgrade, medium).
+
+depends_on(garage_shelf_upgrade, workbench_rebuild).
+unlocks(workbench_rebuild, garage_shelf_upgrade).
+
+symptom(table_lamp_intermittent_power, flickers_when_toggled).
+check_step(table_lamp_intermittent_power, continuity_test_switch).
+check_step(table_lamp_intermittent_power, inspect_loose_terminals).
+cause(table_lamp_intermittent_power, worn_switch_contacts, high).
+cause(table_lamp_intermittent_power, loose_wire_joint, medium).
+
+buy_option(soldering_iron, medium_cost, next_day).
+buy_option(replacement_switch, low_cost, in_stock).
+
 % === Validation domains ===
 valid_status(idea).
 valid_status(planned).
@@ -187,6 +224,152 @@ repair_candidate(Project) :-
     project(Project),
     has_issue(Project, Issue),
     fix_path(Issue, _).
+
+impact_rank(high, 3).
+impact_rank(medium, 2).
+impact_rank(low, 1).
+
+risk_rank(low, 3).
+risk_rank(medium, 2).
+risk_rank(high, 1).
+
+project_score(Project, Score) :-
+    project(Project),
+    status(Project, Status),
+    (Status = active ; Status = planned),
+    \+ blocked_by(Project, _),
+    priority(Project, Priority),
+    impact(Project, Impact),
+    risk(Project, Risk),
+    estimate_hours(Project, Hours),
+    project_missing_tools(Project, MissingTools),
+    project_missing_skills(Project, MissingSkills),
+    priority_rank(Priority, P),
+    impact_rank(Impact, I),
+    risk_rank(Risk, R),
+    list_length(MissingTools, MT),
+    list_length(MissingSkills, MS),
+    Score is P + I + R - Hours - MT - MS.
+
+top_project(Project) :-
+    project_score(Project, Score),
+    \+ (
+        project_score(Other, OtherScore),
+        Other \= Project,
+        OtherScore > Score
+    ).
+
+quick_win(Project) :-
+    project(Project),
+    status(Project, Status),
+    (Status = active ; Status = planned),
+    \+ blocked_by(Project, _),
+    estimate_hours(Project, Hours),
+    Hours =< 2,
+    impact(Project, high).
+
+unlocked_by_tool(Tool, Project) :-
+    project(Project),
+    requires_tool(Project, Tool),
+    \+ owned_tool(Tool),
+    findall(T, (requires_tool(Project, T), \+ owned_tool(T)), Missing),
+    sort(Missing, [Tool]).
+
+purchase_unlock_count(Item, Count) :-
+    findall(Project, unlocked_by_tool(Item, Project), Projects),
+    sort(Projects, Unique),
+    list_length(Unique, Count).
+
+issue_hypothesis(Issue, Cause, Confidence) :-
+    cause(Issue, Cause, Confidence).
+
+symptom_matches(Symptom, Issue) :-
+    symptom(Issue, Symptom).
+
+next_diagnostic_check(Issue, Step) :-
+    check_step(Issue, Step).
+
+skill_gap(Project, Skill) :-
+    requires_skill(Project, Skill),
+    \+ owned_skill(Skill).
+
+skill_unlocks(Skill, Count) :-
+    findall(Project, skill_gap(Project, Skill), Ps),
+    sort(Ps, Unique),
+    list_length(Unique, Count).
+
+best_skill_to_learn(Skill) :-
+    skill_unlocks(Skill, Count),
+    Count > 0,
+    \+ (
+        skill_unlocks(Other, OtherCount),
+        Other \= Skill,
+        OtherCount > Count
+    ).
+
+projects_for_skill_growth(Skill, Project) :-
+    skill_gap(Project, Skill).
+
+victory_chain(Start, Chain) :-
+    project(Start),
+    victory_chain_(Start, [Start], RevChain),
+    reverse_list(RevChain, Chain).
+
+victory_chain_(Current, Acc, Acc) :-
+    \+ unlocks(Current, _).
+victory_chain_(Current, Acc, Chain) :-
+    unlocks(Current, Next),
+    \+ member_of(Next, Acc),
+    victory_chain_(Next, [Next|Acc], Chain).
+
+minimal_buy_list(Items) :-
+    findall(
+        Tool,
+        (
+            requires_tool(Project, Tool),
+            status(Project, Status),
+            (Status = active ; Status = planned),
+            \+ owned_tool(Tool)
+        ),
+        Tools0
+    ),
+    sort(Tools0, Items).
+
+learning_path(Skill, Projects) :-
+    findall(Project, skill_gap(Project, Skill), Ps0),
+    sort_projects_by_effort(Ps0, Projects).
+
+sort_projects_by_effort([], []).
+sort_projects_by_effort([P|Ps], Sorted) :-
+    sort_projects_by_effort(Ps, SortedPs),
+    insert_project_by_effort(P, SortedPs, Sorted).
+
+insert_project_by_effort(P, [], [P]).
+insert_project_by_effort(P, [H|T], [P,H|T]) :-
+    estimate_hours(P, PH),
+    estimate_hours(H, HH),
+    PH =< HH.
+insert_project_by_effort(P, [H|T], [H|R]) :-
+    estimate_hours(P, PH),
+    estimate_hours(H, HH),
+    PH > HH,
+    insert_project_by_effort(P, T, R).
+
+list_length([], 0).
+list_length([_|T], N) :-
+    list_length(T, N0),
+    N is N0 + 1.
+
+member_of(X, [X|_]).
+member_of(X, [_|T]) :-
+    member_of(X, T).
+
+reverse_list(List, Reversed) :-
+    reverse_list_(List, [], Reversed).
+
+reverse_list_([], Acc, Acc).
+reverse_list_([H|T], Acc, Reversed) :-
+    reverse_list_(T, [H|Acc], Reversed).
 
 % === Integrity checks ===
 invalid_status(Item, Status) :-

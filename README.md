@@ -47,6 +47,24 @@ In Scryer REPL:
 ?- kb_consistent.
 ```
 
+Advanced power queries:
+
+```prolog
+?- quick_win(P).
+?- top_project(P).
+?- unlocked_by_tool(Tool, Project).
+?- purchase_unlock_count(Item, Count).
+?- issue_hypothesis(Issue, Cause, Confidence).
+?- symptom_matches(Symptom, Issue).
+?- next_diagnostic_check(Issue, Step).
+?- skill_gap(Project, Skill).
+?- best_skill_to_learn(Skill).
+?- projects_for_skill_growth(Skill, Project).
+?- victory_chain(workbench_rebuild, Chain).
+?- minimal_buy_list(Items).
+?- learning_path(soldering, Projects).
+```
+
 ## Editing the KB
 
 Add or modify facts in `diy_kb.pl`:
